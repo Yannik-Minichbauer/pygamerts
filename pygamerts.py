@@ -169,6 +169,10 @@ class VectorSprite(pygame.sprite.Sprite):
             self._layer = self.layer
         if "zoom" not in kwargs:
             self.zoom = 1
+        if "cx" not in kwargs:
+            self.cx = 0
+        if "cy" not in kwargs:
+            self.cy = 0 
         self.old_zoom = self.zoom # make copy!
         if "name" not in kwargs:
             self.name = None
@@ -317,6 +321,7 @@ class VectorSprite(pygame.sprite.Sprite):
                 boss = VectorSprite.numbers[self.bossnumber]
                 self.pos = pygame.math.Vector2(boss.pos.x, boss.pos.y)
                 self.set_angle(boss.angle)
+                print("updated to boss", self.number, self.bossnumber)
         self.pos += self.move * seconds
         self.move *= self.friction 
         self.distance_traveled += self.move.length() * seconds
@@ -441,36 +446,21 @@ class Cannonball(VectorSprite):
     """3d sprite"""
     
     def _overwrite_parameters(self):
-        self.speed = 3
-        self.pos3 = pygame.math.Vector3(self.pos.x, self.pos.y, 0)
-        self.move3 = pygame.math.Vector3(self.move.x, self.move.y, 300)
+        self.speed = 200
+        self.name = "cannonball"
+        self.start_z = int(self.start_z)
         
+
+    def update(self, seconds):
+        if self.old_zoom != self.zoom:
+            self.create_image()
+        self.old_zoom = self.zoom
+        VectorSprite.update(self, seconds)
+
     
-    def create_image(self):
-        self.image = pygame.surface.Surface((20,20))    
-        z = min(255, self.pos3.z)
-        z= max(0, self.pos3.z)
-        pygame.draw.circle(self.image, (0,0,z), (10,10),10)
-        self.image.set_colorkey((0,0,0))
-        self.image.convert_alpha()
-        self.image0 = self.image.copy()
-        self.rect = self.image.get_rect()
-        
     def update(self, seconds):
         VectorSprite.update(self, seconds)
-        self.pos3 += self.move3 * seconds
-        # gravity
-        self.move3 += pygame.math.Vector3(0,0,-5)
-        # hit earth?
-        if self.pos3.z < 0:
-            self.kill()
-        self.pos = pygame.math.Vector2(self.pos3.x, self.pos3.y)
-        self.move = pygame.math.Vector2(self.move3.x, self.move3.y)
-        oldcenter = self.rect.center
-        self.create_image()
-        self.rect.center = oldcenter
-        #print(self.pos3, self.move3)
-
+        
 class TileCursor(VectorSprite):
     
     def _overwrite_parameters(self):
@@ -555,10 +545,11 @@ class Catapult(VectorSprite):
         #self.z = int(self.z)
         self._layer = 4
         print("Catapult created")
-       
+        
 
         
     def update(self, seconds):
+        
         if self.old_zoom != self.zoom:
             self.create_image()
         self.old_zoom = self.zoom
@@ -572,9 +563,29 @@ class Catapult(VectorSprite):
       
 
 
-
+class Cannon(VectorSprite):
+    def _overwrite_parameters(self):
+        self.name = "cannon" 
+        self.z = 200
+        self.layer = 10
+        
+    def update(self,seconds):
+        if self.old_zoom != self.zoom:
+            self.create_image()
+        self.old_zoom = self.zoom
+        VectorSprite.update(self,seconds)
+        self.pos.x += self.cx
+        self.pos.y += self.cy
+        if random.random() < 0.01:
+            self.rotate(random.choice((-3,-2,-1,-1,0,1,1,2,3)))
+        if random.random() < 0.01:
+            m = pygame.math.Vector2(100,0)
+            m.rotate_ip(self.angle)
+            Cannonball(pos=pygame.math.Vector2(self.pos.x, self.pos.y), move=m, max_distance=1000, angle=self.angle, start_z=self.z+20, bossnumber=self.number, zoom=self.zoom)
+        
+        
+        
 class Swordgoblin(VectorSprite):
-    
     
     def _overwrite_parameters(self):
         self._layer = 6
@@ -626,15 +637,12 @@ class Swordgoblin(VectorSprite):
             Javelin(pos=pygame.math.Vector2(self.pos.x, self.pos.y), move=m, max_distance=1000, angle=self.angle, start_z=self.z+20, bossnumber=self.number, zoom=self.zoom)
         self.guarding() 
 
-            
-class Tent(VectorSprite):
+
+class Ship(Swordgoblin):
     
     def _overwrite_parameters(self):
-        self._layer = 7
-        self.spawntime = 5.0
-        self.spawn = 0
-        self.name = "tent"
-        
+        self.name = "ship"
+        self.move = pygame.math.Vector2(10,0)
         
     def update(self,seconds):
         
@@ -643,13 +651,35 @@ class Tent(VectorSprite):
         self.old_zoom = self.zoom
 
         VectorSprite.update(self,seconds)
-        self.spawn += seconds
-        if self.spawn > self.spawntime:
-            Swordgoblin(pos=pygame.math.Vector2(self.pos.x,
-                        self.pos.y), zoom=self.zoom,
-                        bossnumber=self.number)
-            self.spawn = 0
+    
+        
+    
 
+class Tent(VectorSprite):
+    
+    def _overwrite_parameters(self):
+        self._layer = 7
+        self.spawntime = 5.0
+        self.spawn = 0
+        self.name = "tent"
+        self.max_swordgoblins = 0
+        
+    def update(self,seconds):
+        
+        if self.old_zoom != self.zoom:
+            self.create_image()
+        self.old_zoom = self.zoom
+
+        VectorSprite.update(self,seconds)
+        if self.max_swordgoblins < 5:
+            
+            self.spawn += seconds
+            if self.spawn > self.spawntime:
+                Swordgoblin(pos=pygame.math.Vector2(self.pos.x,
+                            self.pos.y), zoom=self.zoom,
+                            bossnumber=self.number)
+                self.spawn = 0
+                self.max_swordgoblins +=1
 
 class Flytext(VectorSprite):
     
@@ -878,7 +908,10 @@ class Viewer(object):
             Viewer.images["javelin"] = pygame.image.load(os.path.join("data", "javelin.png")).convert_alpha()
             Viewer.images["tower"] = pygame.image.load(os.path.join("data", "tower.png")).convert_alpha()
             Viewer.images["wall"] = pygame.image.load(os.path.join("data", "wall.png")).convert_alpha()
-            
+            Viewer.images["ship"] = pygame.image.load(os.path.join("data", "enemy1.png")).convert_alpha()
+            Viewer.images["cannon"] = pygame.image.load(os.path.join("data", "cannon1.png")).convert_alpha()
+            Viewer.images["cannonball"] = pygame.image.load(os.path.join("data", "cannonball.png")).convert_alpha()
+
                        
             
             
@@ -905,8 +938,10 @@ class Viewer(object):
         self.radargroup = pygame.sprite.Group()
         self.tentgroup = pygame.sprite.Group()
         self.swordgoblingroup = pygame.sprite.Group()
+        self.cannongroup = pygame.sprite.Group()
         VectorSprite.groups = self.allgroup
         #Tile.groups = self.allgroup
+        Ship.groups = self.allgroup,self.worldgroup
         Javelin.groups = self.allgroup, self.worldgroup, self.bulletgroup
         Flytext.groups = self.allgroup, self.flytextgroup
         Turret.groups = self.allgroup, self.worldgroup, self.radargroup
@@ -916,6 +951,7 @@ class Viewer(object):
         Javelin.groups = self.allgroup, self.worldgroup, self.bulletgroup
         Tent.groups = self.allgroup , self.worldgroup
         Swordgoblin.groups = self.allgroup, self.worldgroup, self.swordgoblingroup
+        Cannon.groups = self.allgroup, self.worldgroup, self.cannongroup
         #Catapult.groups = self.allgroup,
         
         # --- tile cursor (number 0) ---
@@ -939,6 +975,12 @@ class Viewer(object):
             tz = self.get_z(x,y)
             Turret(pos=pygame.math.Vector2(x,-y), z=tz, zoom = 1)
             Catapult(pos=pygame.math.Vector2(x,-y), z=tz+25, zoom = 1)
+        for (x,y) in ((200,200),):
+            self.ship1 = Ship(pos = pygame.math.Vector2(x,-y), z = 50 , zoom = 1)
+        #for (x,y) in ((165,200),(120,200),(275,200),):
+            Cannon(pos = pygame.math.Vector2(165,-200), z = 50 , zoom = 1, bossnumber = self.ship1.number, sticky_with_boss = True, cx = -30 )
+            Cannon(pos = pygame.math.Vector2(120,-200), z = 50 , zoom = 1, bossnumber = self.ship1.number, sticky_with_boss = True, cx = 50  )
+            #Catapult(pos = pygame.math.Vector2(275,-200), z = 50 , zoom = 1, bossnumber = self.ship1.number, sticky_with_boss = True, cx = -50 , cy= -50 )
             #print("turret z", tz)
         #print("sprites created")
         #for s in self.allgroup:
